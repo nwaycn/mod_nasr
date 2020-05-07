@@ -1,13 +1,12 @@
+/*
+License:GPL 2
+Auth: Mr hao li
+email: lihao@nway.com.cn
+*/
 #include "switch.h"
 #include "switch_ivr.h"
 #include "switch_types.h"
-
-
-
-
 #define MORE_THAN_FS_VER1_6 
-
-
 
 //__attribute__ ((visibility("default")))
 SWITCH_MODULE_LOAD_FUNCTION(mod_nasr_load);
