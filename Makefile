@@ -5,7 +5,8 @@ SOURCES = mod_nasr.c
 OBJS = $(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(SOURCES)))
 INCLUDE=
 #-I/opt/works/src/nway_authorization/nway_auth_cli/nway_auth_lib/ 
-LDFLAGS = -L/opt/works/src/nway/mod_auth/nway_auth_cli/nway_auth_lib 
+LDFLAGS =
+# -L/opt/works/src/nway/mod_auth/nway_auth_cli/nway_auth_lib 
 #-Wl,--gc-sections  
 #-L/opt/works/src/nway_authorization/nway_auth_cli/nway_auth_lib/
 %.o: %.c
