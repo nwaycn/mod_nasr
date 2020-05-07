@@ -27,6 +27,8 @@ static struct {
 	int debug;
 	char* log_dir;//日志路径 
 	int log_level;
+	char* grammar;
+	char* asr_name;
 } globals;
 
 typedef struct nasr_helper {
@@ -34,6 +36,7 @@ typedef struct nasr_helper {
 	switch_core_session_t *session;
 	switch_core_session_t *other_session;
 	switch_audio_resampler_t *resampler;
+	switch_asr_handle_t *ah;
 	 
 }nasr_helper;
 
@@ -210,7 +213,7 @@ SWITCH_DECLARE(switch_status_t) nway_nasr_session(switch_core_session_t *session
 		
 		 
 		switch_channel_set_private(channel,switch_channel_get_uuid(channel),bug);
-		if ((status = switch_core_media_bug_add(session, "start_ns", NULL,
+		if ((status = switch_core_media_bug_add(session, "start_nasr", NULL,
 												nway_ns_callback, rh, to, flags, &bug)) != SWITCH_STATUS_SUCCESS) {
 			switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR, "Error adding media bug for nasr\n" );
 			
@@ -251,7 +254,19 @@ static switch_status_t load_config(void)
 			if (!strcasecmp(var, "log_dir")) {
 				if (!zstr(val) && switch_is_file_path(val)) {
 					globals.log_dir = switch_core_strdup(globals.pool, val);
-					//switch_snprintf(globals.log_dir,255,val);
+					 
+				}
+			}
+			if (!strcasecmp(var, "grammar")) {
+				if (!zstr(val) && switch_is_file_path(val)) {
+					globals.grammar = switch_core_strdup(globals.pool, val);
+					 
+				}
+			}
+			if (!strcasecmp(var, "asr_name")) {
+				if (!zstr(val) && switch_is_file_path(val)) {
+					globals.asr_name = switch_core_strdup(globals.pool, val);
+					 
 				}
 			}
 

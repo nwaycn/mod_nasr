@@ -1,8 +1,8 @@
 <configuration name="ns.conf" description="ns">
   <settings>
-	
-	<param name="log_dir" value="/etc/ns"/>
-	 
-	<param name="log_level" value="1"/>
+    <param name="grammar" value="grammar/test"/>
+    <param name="asr_name" value="unimrcp"/>
+    <param name="log_dir" value="/etc/nasr"/>
+    <param name="log_level" value="1"/>
   </settings>
 </configuration>
