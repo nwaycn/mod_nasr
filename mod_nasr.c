@@ -288,13 +288,9 @@ SWITCH_STANDARD_APP(nasr_stop_session_function)
    switch_channel_t *channel = switch_core_session_get_channel(session);
 
    if (channel && (bug = switch_channel_get_private(channel, switch_channel_get_uuid(channel)))) {
-		switch_core_media_bug_remove(session, &bug);
-		
+		switch_core_media_bug_remove(session, &bug);	
 	}
-
 }
-
- 
 SWITCH_DECLARE(switch_status_t) switch_ivr_stop_nasr_session(switch_core_session_t *session, struct ns_helper *rh, switch_media_bug_t *bug)
 {
 	 
@@ -303,42 +299,26 @@ SWITCH_DECLARE(switch_status_t) switch_ivr_stop_nasr_session(switch_core_session
 		switch_channel_t *channel = switch_core_session_get_channel(session);
 		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE, "removed media bug:%s\n",rh->destination_number); 
 		if ( switch_channel_down_nosig(channel)  )
-		{
-		 	
+		{	
 		}
-		 
-
 	}
 	return SWITCH_STATUS_SUCCESS;
 }
 
-
-
- 
 SWITCH_STANDARD_APP(nasr_session_function)
 {
-	
 	nway_nasr_session(session);
 }
-
-
-
  
 SWITCH_MODULE_LOAD_FUNCTION(mod_nasr_load)
 {
-	
-	//int r= 2;
-
-	
 	switch_application_interface_t *app_interface;
 	 
 	memset(&globals, 0, sizeof(globals));
 	globals.pool = pool;
 	 
 	switch_api_interface_t *api_interface;
-	
-	
-	
+
 	switch_mutex_init(&globals.mutex, SWITCH_MUTEX_NESTED, globals.pool);
 
 	unsigned int major = atoi(switch_version_major());
@@ -350,27 +330,19 @@ SWITCH_MODULE_LOAD_FUNCTION(mod_nasr_load)
 	globals.fs_ver |= micro << 4;
 		
 	load_config();
+
+	*module_interface = switch_loadable_module_create_module_interface(pool, modname);
 	
-	
-    //int ret =1;
-	if (ret ==0){
-		 
-		*module_interface = switch_loadable_module_create_module_interface(pool, modname);
-	 
-		SWITCH_ADD_APP(app_interface, "start_nasr", "nway asr start", "nasr", nasr_session_function, "", SAF_MEDIA_TAP);
-		SWITCH_ADD_APP(app_interface, "stop_nasr", "nway asr stop", "ns", nasr_stop_session_function, "", SAF_NONE);
-		 
-		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_DEBUG, "module ns loaded\n");
-		return SWITCH_STATUS_SUCCESS;
-	} 
-END:
-	
-    return SWITCH_STATUS_FALSE;
+	SWITCH_ADD_APP(app_interface, "start_nasr", "nway asr start", "nasr", nasr_session_function, "", SAF_MEDIA_TAP);
+	SWITCH_ADD_APP(app_interface, "stop_nasr", "nway asr stop", "ns", nasr_stop_session_function, "", SAF_NONE);
+		
+	switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_DEBUG, "module ns loaded\n");
+	return SWITCH_STATUS_SUCCESS;
+
    
 }
 SWITCH_MODULE_SHUTDOWN_FUNCTION(mod_nasr_shutdown)
 {
-
 	if (globals.mutex)
 	 	switch_mutex_destroy(globals.mutex);	 
 	return SWITCH_STATUS_SUCCESS;
