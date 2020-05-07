@@ -2,10 +2,12 @@
 License:GPL 2
 Auth: Mr hao li
 email: lihao@nway.com.cn
+目的：用于将实时通话的两路送给mrcp+asr，并获取到结果
 */
 #include "switch.h"
 #include "switch_ivr.h"
 #include "switch_types.h"
+#define mod_name "mod_nasr"
 #define MORE_THAN_FS_VER1_6 
 
 //__attribute__ ((visibility("default")))
@@ -35,7 +37,8 @@ typedef struct nasr_helper {
 	switch_core_session_t *session;
 	switch_core_session_t *other_session;
 	switch_audio_resampler_t *resampler;
-	switch_asr_handle_t *ah;
+	switch_asr_handle_t *r_ah;
+	switch_asr_handle_t *w_ah;
 	 
 }nasr_helper;
 
@@ -59,7 +62,7 @@ static switch_bool_t nway_nasr_callback(switch_media_bug_t *bug, void *user_data
 {
 	switch_core_session_t *session = switch_core_media_bug_get_session(bug);
 	switch_channel_t *channel = switch_core_session_get_channel(session);
-	ns_helper *rh = (nasr_helper *) user_data;
+	nasr_helper *rh = (nasr_helper *) user_data;
 	switch_event_t *event;
 	switch_frame_t *nframe;
 	switch_size_t len = 0;
@@ -72,7 +75,7 @@ static switch_bool_t nway_nasr_callback(switch_media_bug_t *bug, void *user_data
 	int16_t *read_data;
 	int read_samples;
 	switch_status_t status;
- 
+	switch_asr_flag_t flags = SWITCH_ASR_FLAG_DATA;
 	switch_core_session_get_read_impl(session, &read_impl);
  
     
@@ -110,21 +113,28 @@ static switch_bool_t nway_nasr_callback(switch_media_bug_t *bug, void *user_data
 		break;
 	case SWITCH_ABC_TYPE_WRITE_REPLACE:
 		{
-			switch_frame_t *wframe = switch_core_media_bug_get_write_replace_frame(bug);
+			if (rh->w_ah){
+				switch_frame_t *wframe = switch_core_media_bug_get_write_replace_frame(bug);
+				if (switch_core_asr_feed(rh->w_ah, wframe.data, wframe.datalen, &flags) != SWITCH_STATUS_SUCCESS) {
+					switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(switch_core_media_bug_get_session(bug)), SWITCH_LOG_DEBUG, "Error Feeding Data\n");
+					return SWITCH_FALSE;
+				}
+				switch_core_media_bug_set_write_replace_frame(bug, wframe);
+			}
 			
-			switch_core_media_bug_set_write_replace_frame(bug, wframe);
 		}
 		break;
        
 	case SWITCH_ABC_TYPE_READ_REPLACE:
 		{
-			switch_frame_t *rframe=NULL;
-			
-			
-			rframe = switch_core_media_bug_get_read_replace_frame(bug);
-			
-			
-			switch_core_media_bug_set_read_replace_frame(bug, rframe);
+			if (rh->r_ah){
+				switch_frame_t *rframe= switch_core_media_bug_get_read_replace_frame(bug);
+				if (switch_core_asr_feed(rh->r_ah, rframe.data, rframe.datalen, &flags) != SWITCH_STATUS_SUCCESS) {
+					switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(switch_core_media_bug_get_session(bug)), SWITCH_LOG_DEBUG, "Error Feeding Data\n");
+					return SWITCH_FALSE;
+				}
+				switch_core_media_bug_set_read_replace_frame(bug, rframe);
+			}
 		}
 		break;
 	 
@@ -144,6 +154,7 @@ SWITCH_DECLARE(switch_status_t) nway_nasr_session(switch_core_session_t *session
 	const char *vval;
 	switch_media_bug_t *bug;
 	switch_status_t status;
+	switch_asr_flag_t flags = SWITCH_ASR_FLAG_DATA;
 	time_t to = 0;
 	switch_media_bug_flag_t flags = SMBF_NO_PAUSE|SMBF_READ_REPLACE|SMBF_WRITE_REPLACE;
 	//SMBF_READ_PING|SMBF_READ_STREAM | SMBF_WRITE_STREAM |SMBF_TAP_NATIVE_READ |SMBF_TAP_NATIVE_WRITE|SMBF_NO_PAUSE|SMBF_READ_REPLACE;
@@ -151,7 +162,7 @@ SWITCH_DECLARE(switch_status_t) nway_nasr_session(switch_core_session_t *session
 	switch_codec_implementation_t read_impl ;
 	nasr_helper *rh = NULL;
 
-	switch_codec_t raw_codec  ;
+	switch_codec_t raw_codec;
 	for (; ;) {
 		
 		rh = (nasr_helper*)switch_core_session_alloc(session, sizeof(*rh));
@@ -168,6 +179,7 @@ SWITCH_DECLARE(switch_status_t) nway_nasr_session(switch_core_session_t *session
 		}
 
 		switch_core_session_get_read_impl(session, &read_impl);
+		
 		rh->session= session;
 
 		switch_assert(session);
@@ -180,25 +192,41 @@ SWITCH_DECLARE(switch_status_t) nway_nasr_session(switch_core_session_t *session
 			rh->destination_number = switch_core_strdup(globals.pool,caller_profile->destination_number);	
 			rh->gateway_name = 	switch_core_strdup(globals.pool,switch_channel_get_variable(channel, "sip_gateway_name"));
 		}
-		
-		rh->resampler = NULL;
-		if (read_impl.actual_samples_per_second != 8000) {
+		//open asr handle
+		if ((status = switch_core_asr_open(rh->r_ah,
+		mod_name,
+		"L16",
+		read_impl.actual_samples_per_second, rh->destination_number, &flags,
+		switch_core_session_get_pool(session))) != SWITCH_STATUS_SUCCESS) {
 
-			if (switch_resample_create(&rh->resampler,
-				read_impl.actual_samples_per_second,
-				8000,
-				read_impl.samples_per_packet, SWITCH_RESAMPLE_QUALITY, 1) != SWITCH_STATUS_SUCCESS) {
-
-					switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_CRIT, "Unable to create resampler!\n");
-
-					break;
-
-			}
+			switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR, "switch_core_asr_open %s error!\n",switch_core_session_get_name(session));
+			break;
 		}
+		if ((status = switch_core_asr_open(rh->w_ah,
+		mod_name,
+		"L16",
+		read_impl.actual_samples_per_second, rh->destination_number, &flags,
+		switch_core_session_get_pool(session))) != SWITCH_STATUS_SUCCESS) {
+
+			switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR, "switch_core_asr_open %s error!\n",switch_core_session_get_name(session));
+			break;
+		}
+		// rh->resampler = NULL;
+		// if (read_impl.actual_samples_per_second != 8000) {
+
+		// 	if (switch_resample_create(&rh->resampler,
+		// 		read_impl.actual_samples_per_second,
+		// 		8000,
+		// 		read_impl.samples_per_packet, SWITCH_RESAMPLE_QUALITY, 1) != SWITCH_STATUS_SUCCESS) {
+
+		// 			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_CRIT, "Unable to create resampler!\n");
+
+		// 			break;
+
+		// 	}
+		// }
 	
-		int tflags = 0;
-		
-	 
+		int tflags = 0;	 
 		const char* uuid;
 		if ((uuid = switch_channel_get_partner_uuid(channel))) {
 
@@ -215,17 +243,31 @@ SWITCH_DECLARE(switch_status_t) nway_nasr_session(switch_core_session_t *session
 		if ((status = switch_core_media_bug_add(session, "start_nasr", NULL,
 												nway_ns_callback, rh, to, flags, &bug)) != SWITCH_STATUS_SUCCESS) {
 			switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR, "Error adding media bug for nasr\n" );
-			
-			
-		
-			return status;
+			break;
 		}
 		switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_DEBUG, "added media bug for nasr\n" );
-	 
+	 	if (switch_core_asr_load_grammar(rh->r_ah, globals.grammar, globals.asr_name) != SWITCH_STATUS_SUCCESS) {
+			switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR, "Error loading Grammar\n");
+			break;
+		}
+		if (switch_core_asr_load_grammar(rh->w_ah, globals.grammar, globals.asr_name) != SWITCH_STATUS_SUCCESS) {
+			switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR, "Error loading Grammar\n");
+			break;
+		}
 		return SWITCH_STATUS_SUCCESS;
 	}
 	switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR, "exit nasr when wrong\n" );
-	 
+	if (rh->r_ah)
+	{
+		switch_core_asr_close(rh->r_ah, &flags);
+	}
+	if (rh->w_ah)
+	{
+		switch_core_asr_close(rh->w_ah, &flags);
+	}
+	if (bug){
+		switch_core_media_bug_remove(session, &bug); 
+	}
     switch_core_session_reset(session, SWITCH_FALSE, SWITCH_TRUE);
 	return SWITCH_STATUS_FALSE;
 }
@@ -291,7 +333,7 @@ SWITCH_STANDARD_APP(nasr_stop_session_function)
 		switch_core_media_bug_remove(session, &bug);	
 	}
 }
-SWITCH_DECLARE(switch_status_t) switch_ivr_stop_nasr_session(switch_core_session_t *session, struct ns_helper *rh, switch_media_bug_t *bug)
+SWITCH_DECLARE(switch_status_t) switch_ivr_stop_nasr_session(switch_core_session_t *session, struct nasr_helper *rh, switch_media_bug_t *bug)
 {
 	 
 	if (session == NULL){
@@ -301,6 +343,17 @@ SWITCH_DECLARE(switch_status_t) switch_ivr_stop_nasr_session(switch_core_session
 		if ( switch_channel_down_nosig(channel)  )
 		{	
 		}
+		if (rh->r_ah)
+		{
+			switch_core_asr_close(rh->r_ah, &flags);
+		}
+		if (rh->w_ah)
+		{
+			switch_core_asr_close(rh->w_ah, &flags);
+		}
+		// if (bug){
+		// 	switch_core_media_bug_remove(session, &bug); 
+		// }
 	}
 	return SWITCH_STATUS_SUCCESS;
 }
